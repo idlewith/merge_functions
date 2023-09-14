@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "merge_functions"
-version = "0.0.1"
+version = "0.0.2"
 description = "merge functions from other python files"
 authors = ["idlewith <newellzhou@163.com>"]
 license = "MIT"
