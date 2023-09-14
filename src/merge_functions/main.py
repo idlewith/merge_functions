@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
+from merge_functions.merge import merge
 
 
 def main():
-    print("hello, merge_functions")
+    merge()
