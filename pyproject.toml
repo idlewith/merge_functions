@@ -13,6 +13,11 @@ classifiers = [
     "Natural Language :: English",
     "Operating System :: OS Independent",
 ]
+exclude = [
+    "src/merge_functions/.DS_Store",
+    "src/merge_functions/.mypy_cache",
+    "src/merge_functions/t.py",
+]
 
 [tool.poetry.dependencies]
 python = ">=3.8, <4"
