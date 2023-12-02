@@ -2,90 +2,13 @@ import argparse
 import ast
 import inspect
 
+import isort
 from black import format_str, FileMode
 
-
-def get_extra_func_source(name, node):
-    imported_module = __import__(node.module, fromlist=[name.name])
-    imported_function = getattr(imported_module, name.name)
-    source_code = inspect.getsource(imported_function)
-    return source_code
-
-
-def is_required_import_statements(keyword, node_fragment):
-    if keyword.lower() in node_fragment.lower():
-        return False
-    return True
-
-
-def walk_extra_func(tree, keyword):
-    extra_func_list = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
-            for name in node.names:
-                try:
-                    if not is_required_import_statements(keyword, node.module):
-                        source_code = get_extra_func_source(name, node)
-                        extra_func_list.append(source_code + "\n")
-                except (ModuleNotFoundError, AttributeError):
-                    pass
-
-    return extra_func_list
-
-
-def get_node_fragment(code_list, node):
-    node_fragment_list = code_list[node.lineno - 1 : node.end_lineno]
-    return node_fragment_list
-
-
-def get_required_import_statements(tree, code_list, keywords):
-    statements = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            node_fragment_list = get_node_fragment(code_list, node)
-            for node_fragment in node_fragment_list:
-                bool_list = []
-                for keyword in keywords:
-                    if is_required_import_statements(keyword, node_fragment):
-                        bool_list.append(True)
-                    else:
-                        bool_list.append(False)
-
-                if all(bool_list):
-                    statements.add(node_fragment)
-
-        if isinstance(node, ast.ImportFrom):
-            node_fragment_list = get_node_fragment(code_list, node)
-            for node_fragment in node_fragment_list:
-                bool_list = []
-                for keyword in keywords:
-                    if is_required_import_statements(keyword, node.module):
-                        bool_list.append(True)
-                    else:
-                        bool_list.append(False)
-
-                if all(bool_list):
-                    statements.add(node_fragment)
-
-    return list(statements)
-
-
-def get_all_import_statements(tree, code_list):
-    statements = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import) or isinstance(node, ast.ImportFrom):
-            node_fragment = get_node_fragment(code_list, node)
-            statements.extend(node_fragment)
-
-    return statements
-
-
-def get_other_code(code_list, import_statements):
-    other = []
-    for code in code_list:
-        if code not in import_statements:
-            other.append(code)
-    return other
+from merge_functions.exceptions import (
+    NotPythonFileException,
+    PythonFileIsEmptyException,
+)
 
 
 def get_args():
@@ -119,37 +42,206 @@ def get_args():
     return args
 
 
+def is_import_node(node):
+    is_import = isinstance(node, ast.Import) or isinstance(
+        node, ast.ImportFrom
+    )
+    if is_import:
+        return True
+
+    return False
+
+
+def get_last_import_node_index(node_list):
+    for index, node in enumerate(reversed(node_list)):
+        if is_import_node(node):
+            last_index = len(node_list) - index
+            return last_index
+
+    # get empty import node list if no import
+    default_index = 0
+    return default_index
+
+
+def get_keyword_import_node_list(node_list, keywords):
+    keyword_node_list = []
+    for node in node_list:
+        if not isinstance(node, ast.ImportFrom):
+            continue
+
+        is_keyword = judge_keywords_in_module_name(keywords, node.module)
+        if not is_keyword:
+            continue
+
+        keyword_node_list.append(node)
+
+    return keyword_node_list
+
+
+def get_rest_import_node_list(node_list, keywords):
+    rest_node_list = []
+    for node in node_list:
+        if not isinstance(node, ast.ImportFrom):
+            rest_node_list.append(node)
+            continue
+
+        is_keyword = judge_keywords_in_module_name(keywords, node.module)
+        if is_keyword:
+            continue
+
+        rest_node_list.append(node)
+
+    return rest_node_list
+
+
+def judge_keywords_in_module_name(keywords, module_name):
+    """any single keyword in module name"""
+    for keyword in keywords:
+        is_keyword = keyword.lower() in module_name.lower()
+        if is_keyword:
+            return True
+
+    return False
+
+
+def parse_tree_from_file(filename):
+    with open(filename, encoding="utf-8") as f:
+        tree = ast.parse(f.read())
+        return tree
+
+
+def get_extra_files_import_node_list(node_list):
+    import_node_list = []
+    for node in node_list:
+        for name in node.names:
+            module = __import__(node.module, fromlist=[name.name])
+            func_class = getattr(module, name.name)
+
+            source_file = inspect.getsourcefile(func_class)
+            tree = parse_tree_from_file(source_file)
+
+            for node_extra in tree.body:
+                if not is_import_node(node_extra):
+                    continue
+
+                import_node_list.append(node_extra)
+
+    return import_node_list
+
+
+def gen_extra_files_func_class_node_list(node_list):
+    func_class_node_list = []
+    for node in node_list:
+        for name in node.names:
+            module = __import__(node.module, fromlist=[name.name])
+            func_class = getattr(module, name.name)
+            source_code = inspect.getsource(func_class)
+            tree = ast.parse(source_code)
+            if not tree.body:
+                continue
+
+            func_class_node = tree.body[0]
+            func_class_node_list.append(func_class_node)
+
+    return func_class_node_list
+
+
+def check_file_type(filename, file_type=".py"):
+    is_python_file = filename.lower().endswith(file_type)
+    if not is_python_file:
+        error_text = "input file is not python file"
+        raise NotPythonFileException(error_text)
+
+
+def check_file_content(node_list):
+    """check whether the first node is a document string"""
+    if not node_list:
+        error_text = "python file is empty"
+        raise PythonFileIsEmptyException(error_text)
+
+
+def gen_merge_node(input_file, keywords):
+    check_file_type(input_file)
+
+    tree = parse_tree_from_file(input_file)
+    node_list = tree.body
+
+    check_file_content(node_list)
+
+    is_docstr_node_exist = judge_docstr_node_exist(node_list)
+    start_index_for_import = gen_start_index_for_import(is_docstr_node_exist)
+    last_index_for_import = get_last_import_node_index(node_list)
+    import_node_list = node_list[start_index_for_import:last_index_for_import]
+    rest_node_list = node_list[last_index_for_import : len(node_list) + 1]
+
+    # fileter extra modules
+    rest_import_node_list = get_rest_import_node_list(
+        import_node_list,
+        keywords,
+    )
+    # get import node from extra module files
+    keyword_import_node_list = get_keyword_import_node_list(
+        import_node_list,
+        keywords,
+    )
+
+    # generate the node list of extra modules
+    extra_files_func_class_node_list = gen_extra_files_func_class_node_list(
+        keyword_import_node_list,
+    )
+    # generate the import node list of extra modules
+    extra_files_import_node_list = get_extra_files_import_node_list(
+        keyword_import_node_list,
+    )
+
+    normal_node_list = (
+        rest_import_node_list
+        + extra_files_import_node_list
+        + extra_files_func_class_node_list
+        + rest_node_list
+    )
+    if is_docstr_node_exist:
+        first_doc_node = node_list[0]
+        tree.body = [first_doc_node] + normal_node_list
+    else:
+        tree.body = normal_node_list
+
+    # convert the modified syntax tree to python code
+    new_code = ast.unparse(tree)
+    # sort import
+    new_code = isort.code(new_code)
+    # format code
+    new_code = format_str(new_code, mode=FileMode(line_length=79))
+
+    return new_code
+
+
+def gen_start_index_for_import(is_docstring_node_exist):
+    start_index = 0
+    if is_docstring_node_exist:
+        start_index = 1
+
+    return start_index
+
+
+def judge_docstr_node_exist(node_list):
+    first_node = node_list[0]
+    is_docstring_node_exist = (
+        node_list
+        and isinstance(first_node, ast.Expr)
+        and isinstance(first_node.value, ast.Str)
+    )
+    return is_docstring_node_exist
+
+
 def merge():
     args = get_args()
     input_file = args.input
     keywords = args.modules
     output_file = args.output
 
-    code = open(input_file).read()
-    tree = ast.parse(code)
-    code_list = code.splitlines()
+    merge_node = gen_merge_node(input_file, keywords)
 
-    required_import_statements = get_required_import_statements(
-        tree,
-        code_list,
-        keywords,
-    )
-    multi_module_extra_func_list = []
-    for keyword in keywords:
-        extra_func_list = walk_extra_func(tree, keyword)
-        multi_module_extra_func_list.extend(extra_func_list)
-
-    all_import_statements = get_all_import_statements(tree, code_list)
-    other_statements = get_other_code(code_list, all_import_statements)
-
-    new_code_list = (
-        required_import_statements
-        + multi_module_extra_func_list
-        + other_statements
-    )
-    new_code_str = format_str(
-        "\n".join(new_code_list), mode=FileMode(line_length=79)
-    )
-
+    # write code to file
     with open(output_file, "w", encoding="utf-8") as f:
-        f.write(new_code_str)
+        f.write(merge_node)
