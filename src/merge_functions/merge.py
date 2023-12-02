@@ -52,6 +52,54 @@ def is_import_node(node):
     return False
 
 
+def judge_keywords_in_module_name(keywords, module_name):
+    """any single keyword in module name"""
+    for keyword in keywords:
+        is_keyword = keyword.lower() in module_name.lower()
+        if is_keyword:
+            return True
+
+    return False
+
+
+def check_file_type(filename, file_type=".py"):
+    is_python_file = filename.lower().endswith(file_type)
+    if not is_python_file:
+        error_text = "input file is not python file"
+        raise NotPythonFileException(error_text)
+
+
+def parse_tree_from_file(filename):
+    with open(filename, encoding="utf-8") as f:
+        tree = ast.parse(f.read())
+        return tree
+
+
+def check_file_content(node_list):
+    """check whether the first node is a document string"""
+    if not node_list:
+        error_text = "python file is empty"
+        raise PythonFileIsEmptyException(error_text)
+
+
+def judge_docstr_node_exist(node_list):
+    first_node = node_list[0]
+    is_docstring_node_exist = (
+        node_list
+        and isinstance(first_node, ast.Expr)
+        and isinstance(first_node.value, ast.Str)
+    )
+    return is_docstring_node_exist
+
+
+def gen_start_index_for_import(is_docstring_node_exist):
+    start_index = 0
+    if is_docstring_node_exist:
+        start_index = 1
+
+    return start_index
+
+
 def get_last_import_node_index(node_list):
     for index, node in enumerate(reversed(node_list)):
         if is_import_node(node):
@@ -61,21 +109,6 @@ def get_last_import_node_index(node_list):
     # get empty import node list if no import
     default_index = 0
     return default_index
-
-
-def get_keyword_import_node_list(node_list, keywords):
-    keyword_node_list = []
-    for node in node_list:
-        if not isinstance(node, ast.ImportFrom):
-            continue
-
-        is_keyword = judge_keywords_in_module_name(keywords, node.module)
-        if not is_keyword:
-            continue
-
-        keyword_node_list.append(node)
-
-    return keyword_node_list
 
 
 def get_rest_import_node_list(node_list, keywords):
@@ -94,39 +127,19 @@ def get_rest_import_node_list(node_list, keywords):
     return rest_node_list
 
 
-def judge_keywords_in_module_name(keywords, module_name):
-    """any single keyword in module name"""
-    for keyword in keywords:
-        is_keyword = keyword.lower() in module_name.lower()
-        if is_keyword:
-            return True
-
-    return False
-
-
-def parse_tree_from_file(filename):
-    with open(filename, encoding="utf-8") as f:
-        tree = ast.parse(f.read())
-        return tree
-
-
-def get_extra_files_import_node_list(node_list):
-    import_node_list = []
+def get_keyword_import_node_list(node_list, keywords):
+    keyword_node_list = []
     for node in node_list:
-        for name in node.names:
-            module = __import__(node.module, fromlist=[name.name])
-            func_class = getattr(module, name.name)
+        if not isinstance(node, ast.ImportFrom):
+            continue
 
-            source_file = inspect.getsourcefile(func_class)
-            tree = parse_tree_from_file(source_file)
+        is_keyword = judge_keywords_in_module_name(keywords, node.module)
+        if not is_keyword:
+            continue
 
-            for node_extra in tree.body:
-                if not is_import_node(node_extra):
-                    continue
+        keyword_node_list.append(node)
 
-                import_node_list.append(node_extra)
-
-    return import_node_list
+    return keyword_node_list
 
 
 def gen_extra_files_func_class_node_list(node_list):
@@ -146,18 +159,23 @@ def gen_extra_files_func_class_node_list(node_list):
     return func_class_node_list
 
 
-def check_file_type(filename, file_type=".py"):
-    is_python_file = filename.lower().endswith(file_type)
-    if not is_python_file:
-        error_text = "input file is not python file"
-        raise NotPythonFileException(error_text)
+def get_extra_files_import_node_list(node_list):
+    import_node_list = []
+    for node in node_list:
+        for name in node.names:
+            module = __import__(node.module, fromlist=[name.name])
+            func_class = getattr(module, name.name)
 
+            source_file = inspect.getsourcefile(func_class)
+            tree = parse_tree_from_file(source_file)
 
-def check_file_content(node_list):
-    """check whether the first node is a document string"""
-    if not node_list:
-        error_text = "python file is empty"
-        raise PythonFileIsEmptyException(error_text)
+            for node_extra in tree.body:
+                if not is_import_node(node_extra):
+                    continue
+
+                import_node_list.append(node_extra)
+
+    return import_node_list
 
 
 def gen_merge_node(input_file, keywords):
@@ -214,24 +232,6 @@ def gen_merge_node(input_file, keywords):
     new_code = format_str(new_code, mode=FileMode(line_length=79))
 
     return new_code
-
-
-def gen_start_index_for_import(is_docstring_node_exist):
-    start_index = 0
-    if is_docstring_node_exist:
-        start_index = 1
-
-    return start_index
-
-
-def judge_docstr_node_exist(node_list):
-    first_node = node_list[0]
-    is_docstring_node_exist = (
-        node_list
-        and isinstance(first_node, ast.Expr)
-        and isinstance(first_node.value, ast.Str)
-    )
-    return is_docstring_node_exist
 
 
 def merge():
