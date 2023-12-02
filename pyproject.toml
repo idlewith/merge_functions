@@ -1,13 +1,13 @@
 [tool.poetry]
 name = "merge_functions"
-version = "0.0.2"
+version = "0.0.3"
 description = "merge functions from other python files"
 authors = ["idlewith <newellzhou@163.com>"]
 license = "MIT"
 readme = "README.md"
 homepage = "https://github.com/idlewith/merge_functions"
 classifiers = [
-    "Development Status :: 1 - Planning",
+    "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: End Users/Desktop",
     "Natural Language :: English",
