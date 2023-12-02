@@ -69,7 +69,7 @@ class TestMergeNode(unittest.TestCase):
             input_file,
             keywords,
         )
-        self.assertEqual(actual_merge_code, expect_merge_code)
+        self.assertEqual(expect_merge_code, actual_merge_code)
 
 
 if __name__ == "__main__":

@@ -42,24 +42,161 @@ def get_args():
     return args
 
 
-def is_import_node(node):
-    is_import = isinstance(node, ast.Import) or isinstance(
-        node, ast.ImportFrom
-    )
-    if is_import:
-        return True
+class NodeOps:
+    def __init__(self, node):
+        self.node = node
 
-    return False
+    def get_func_class(self, name):
+        module = __import__(self.node.module, fromlist=[name.name])
+        func_class = getattr(module, name.name)
+        return func_class
+
+    def is_docstring(self):
+        exist = (
+            self.node
+            and isinstance(self.node, ast.Expr)
+            and isinstance(self.node.value, ast.Str)
+        )
+        return exist
+
+    def is_import_from(self):
+        return isinstance(self.node, ast.ImportFrom)
+
+    def is_import(self):
+        return isinstance(self.node, ast.Import)
+
+    def is_import_or_import_from(self):
+        return self.is_import() or self.is_import_from()
+
+    def is_keywords_in_node_module(self, keywords):
+        for keyword in keywords:
+            exist = keyword.lower() in self.node.module.lower()
+            if exist:
+                return exist
+        return False
 
 
-def judge_keywords_in_module_name(keywords, module_name):
-    """any single keyword in module name"""
-    for keyword in keywords:
-        is_keyword = keyword.lower() in module_name.lower()
-        if is_keyword:
-            return True
+class MultiNodeOps:
+    def __init__(self, node_list):
+        self.node_list = node_list
 
-    return False
+    def check_file_content(self):
+        """check whether the first node is a document string"""
+        if not self.node_list:
+            error_text = "python file is empty"
+            raise PythonFileIsEmptyException(error_text)
+
+    def has_docstring_node(self):
+        first_node = self.node_list[0]
+        node_ops = NodeOps(first_node)
+        return node_ops.is_docstring()
+
+    def get_last_index(self):
+        return len(self.node_list) + 1
+
+    def get_last_import_node_index(self):
+        for index, node in enumerate(reversed(self.node_list)):
+            node_ops = NodeOps(node)
+            if node_ops.is_import_or_import_from():
+                last_index = len(self.node_list) - index
+                return last_index
+
+        # get empty import node list if no import
+        default_index = 0
+        return default_index
+
+    def get_node_list_by_range(self, begin, end):
+        return self.node_list[begin:end]
+
+
+class MainNode:
+    def __init__(self, keywords, multi_node_ops: MultiNodeOps):
+        self.keywords = keywords
+        self.multi_node_ops = multi_node_ops
+
+    def get_import_node_list(self):
+        begin = 0
+        if self.multi_node_ops.has_docstring_node():
+            begin = 1
+
+        end = self.multi_node_ops.get_last_import_node_index()
+        return self.multi_node_ops.get_node_list_by_range(begin, end)
+
+    def get_rest_import_node_list(self):
+        node_list = self.get_import_node_list()
+        rest_import_node_list = []
+        for node in node_list:
+            node_ops = NodeOps(node)
+            if not node_ops.is_import_from():
+                rest_import_node_list.append(node)
+                continue
+
+            if node_ops.is_keywords_in_node_module(self.keywords):
+                continue
+
+            rest_import_node_list.append(node)
+
+        return rest_import_node_list
+
+    def get_keyword_import_node_list(self):
+        node_list = self.get_import_node_list()
+        keyword_node_list = []
+        for node in node_list:
+            node_ops = NodeOps(node)
+            if not node_ops.is_import_from():
+                continue
+
+            if not node_ops.is_keywords_in_node_module(self.keywords):
+                continue
+
+            keyword_node_list.append(node)
+
+        return keyword_node_list
+
+    def get_rest_node_list(self):
+        begin = self.multi_node_ops.get_last_import_node_index()
+        end = self.multi_node_ops.get_last_index()
+        return self.multi_node_ops.get_node_list_by_range(begin, end)
+
+
+class ExtraNode:
+    def __init__(self, multi_node_ops):
+        self.multi_node_ops = multi_node_ops
+
+    def get_func_class_node_list(self):
+        node_list = self.multi_node_ops.node_list
+        func_class_node_list = []
+        for node in node_list:
+            node_ops = NodeOps(node)
+            for name in node.names:
+                func_class = node_ops.get_func_class(name)
+                source_code = inspect.getsource(func_class)
+                node_list = ast.parse(source_code).body
+                if not node_list:
+                    continue
+
+                func_class_node = node_list[0]
+                func_class_node_list.append(func_class_node)
+
+        return func_class_node_list
+
+    def get_import_node_list(self):
+        node_list = self.multi_node_ops.node_list
+        import_node_list = []
+        for node in node_list:
+            node_ops = NodeOps(node)
+            for name in node.names:
+                func_class = node_ops.get_func_class(name)
+                source_file = inspect.getsourcefile(func_class)
+                extra_node_list = parse_tree_body_from_file(source_file)
+                for extra_node in extra_node_list:
+                    extra_node_ops = NodeOps(extra_node)
+                    if not extra_node_ops.is_import_or_import_from():
+                        continue
+
+                    import_node_list.append(extra_node)
+
+        return import_node_list
 
 
 def check_file_type(filename, file_type=".py"):
@@ -69,148 +206,35 @@ def check_file_type(filename, file_type=".py"):
         raise NotPythonFileException(error_text)
 
 
-def parse_tree_from_file(filename):
+def parse_tree_body_from_file(filename):
     with open(filename, encoding="utf-8") as f:
         tree = ast.parse(f.read())
-        return tree
+        return tree.body
 
 
-def check_file_content(node_list):
-    """check whether the first node is a document string"""
-    if not node_list:
-        error_text = "python file is empty"
-        raise PythonFileIsEmptyException(error_text)
-
-
-def judge_docstr_node_exist(node_list):
-    first_node = node_list[0]
-    is_docstring_node_exist = (
-        node_list
-        and isinstance(first_node, ast.Expr)
-        and isinstance(first_node.value, ast.Str)
-    )
-    return is_docstring_node_exist
-
-
-def gen_start_index_for_import(is_docstring_node_exist):
-    start_index = 0
-    if is_docstring_node_exist:
-        start_index = 1
-
-    return start_index
-
-
-def get_last_import_node_index(node_list):
-    for index, node in enumerate(reversed(node_list)):
-        if is_import_node(node):
-            last_index = len(node_list) - index
-            return last_index
-
-    # get empty import node list if no import
-    default_index = 0
-    return default_index
-
-
-def get_rest_import_node_list(node_list, keywords):
-    rest_node_list = []
-    for node in node_list:
-        if not isinstance(node, ast.ImportFrom):
-            rest_node_list.append(node)
-            continue
-
-        is_keyword = judge_keywords_in_module_name(keywords, node.module)
-        if is_keyword:
-            continue
-
-        rest_node_list.append(node)
-
-    return rest_node_list
-
-
-def get_keyword_import_node_list(node_list, keywords):
-    keyword_node_list = []
-    for node in node_list:
-        if not isinstance(node, ast.ImportFrom):
-            continue
-
-        is_keyword = judge_keywords_in_module_name(keywords, node.module)
-        if not is_keyword:
-            continue
-
-        keyword_node_list.append(node)
-
-    return keyword_node_list
-
-
-def gen_extra_files_func_class_node_list(node_list):
-    func_class_node_list = []
-    for node in node_list:
-        for name in node.names:
-            module = __import__(node.module, fromlist=[name.name])
-            func_class = getattr(module, name.name)
-            source_code = inspect.getsource(func_class)
-            tree = ast.parse(source_code)
-            if not tree.body:
-                continue
-
-            func_class_node = tree.body[0]
-            func_class_node_list.append(func_class_node)
-
-    return func_class_node_list
-
-
-def get_extra_files_import_node_list(node_list):
-    import_node_list = []
-    for node in node_list:
-        for name in node.names:
-            module = __import__(node.module, fromlist=[name.name])
-            func_class = getattr(module, name.name)
-
-            source_file = inspect.getsourcefile(func_class)
-            tree = parse_tree_from_file(source_file)
-
-            for node_extra in tree.body:
-                if not is_import_node(node_extra):
-                    continue
-
-                import_node_list.append(node_extra)
-
-    return import_node_list
+def gen_tree():
+    tree = ast.Module()
+    tree.type_ignores = []
+    return tree
 
 
 def gen_merge_node(input_file, keywords):
     check_file_type(input_file)
+    node_list = parse_tree_body_from_file(input_file)
 
-    tree = parse_tree_from_file(input_file)
-    node_list = tree.body
+    full_multi_node_ops = MultiNodeOps(node_list)
+    full_multi_node_ops.check_file_content()
+    is_docstr_node_exist = full_multi_node_ops.has_docstring_node()
 
-    check_file_content(node_list)
+    main_node = MainNode(keywords, full_multi_node_ops)
+    rest_import_node_list = main_node.get_rest_import_node_list()
+    keyword_import_node_list = main_node.get_keyword_import_node_list()
+    rest_node_list = main_node.get_rest_node_list()
 
-    is_docstr_node_exist = judge_docstr_node_exist(node_list)
-    start_index_for_import = gen_start_index_for_import(is_docstr_node_exist)
-    last_index_for_import = get_last_import_node_index(node_list)
-    import_node_list = node_list[start_index_for_import:last_index_for_import]
-    rest_node_list = node_list[last_index_for_import : len(node_list) + 1]
-
-    # fileter extra modules
-    rest_import_node_list = get_rest_import_node_list(
-        import_node_list,
-        keywords,
-    )
-    # get import node from extra module files
-    keyword_import_node_list = get_keyword_import_node_list(
-        import_node_list,
-        keywords,
-    )
-
-    # generate the node list of extra modules
-    extra_files_func_class_node_list = gen_extra_files_func_class_node_list(
-        keyword_import_node_list,
-    )
-    # generate the import node list of extra modules
-    extra_files_import_node_list = get_extra_files_import_node_list(
-        keyword_import_node_list,
-    )
+    keyword_multi_node_ops = MultiNodeOps(keyword_import_node_list)
+    extra_node = ExtraNode(keyword_multi_node_ops)
+    extra_files_func_class_node_list = extra_node.get_func_class_node_list()
+    extra_files_import_node_list = extra_node.get_import_node_list()
 
     normal_node_list = (
         rest_import_node_list
@@ -218,6 +242,7 @@ def gen_merge_node(input_file, keywords):
         + extra_files_func_class_node_list
         + rest_node_list
     )
+    tree = gen_tree()
     if is_docstr_node_exist:
         first_doc_node = node_list[0]
         tree.body = [first_doc_node] + normal_node_list
