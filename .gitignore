@@ -1,11 +1,6 @@
 .idea/
 __pycache__/
 t.py
-one.py
-example_module.py
-demo_module.py
-src/merge_functions/example
-example
 t1.py
 today_in_history*.json
 nohup.out
