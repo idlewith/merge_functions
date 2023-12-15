@@ -101,9 +101,15 @@ class MainNode:
 
 
 class ExtraNode:
-    def __init__(self, multi_node_ops, is_get_all_code):
+    def __init__(
+        self,
+        multi_node_ops,
+        is_get_all_code,
+        keywords,
+    ):
         self.multi_node_ops = multi_node_ops
         self.is_get_all_code = is_get_all_code
+        self.keywords = keywords
 
     @staticmethod
     def is_import_condition(node):
@@ -146,18 +152,39 @@ class ExtraNode:
         filtered_node_list = []
         for node in node_list:
             node_ops = NodeOps(node)
+
+            source_file_set = set()
             for name in node.names:
                 func_class = node_ops.get_func_class(name)
                 source_file = inspect.getsourcefile(func_class)
-                extra_node_list = parse_tree_body_from_file(source_file)
+                source_file_set.add(source_file)
 
+            for source_file in source_file_set:
+                extra_node_list = parse_tree_body_from_file(source_file)
                 filtered_nodes = filter(condition_func, extra_node_list)
                 filtered_node_list.extend(filtered_nodes)
 
         return filtered_node_list
 
     def get_import_node_list(self):
-        return self.get_filtered_node_list(self.is_import_condition)
+        import_node_list = self.get_filtered_node_list(
+            self.is_import_condition
+        )
+
+        node_list = []
+        for node in import_node_list:
+            node_ops = NodeOps(node)
+
+            if node_ops.is_import():
+                node_list.append(node)
+                continue
+
+            if node_ops.is_keywords_in_node_module(self.keywords):
+                continue
+
+            node_list.append(node)
+
+        return node_list
 
 
 def check_file_type(filename, file_type=".py"):
@@ -179,7 +206,11 @@ def gen_tree():
     return tree
 
 
-def gen_merge_node(input_file, args):
+def gen_merge_node(
+    input_file,
+    keywords,
+    is_get_all_code,
+):
     check_file_type(input_file)
     node_list = parse_tree_body_from_file(input_file)
 
@@ -187,13 +218,17 @@ def gen_merge_node(input_file, args):
     full_multi_node_ops.check_file_content()
     is_docstr_node_exist = full_multi_node_ops.has_docstring_node()
 
-    main_node = MainNode(args.modules, full_multi_node_ops)
+    main_node = MainNode(keywords, full_multi_node_ops)
     rest_import_node_list = main_node.get_rest_import_node_list()
     keyword_import_node_list = main_node.get_keyword_import_node_list()
     rest_node_list = main_node.get_rest_node_list()
 
     keyword_multi_node_ops = MultiNodeOps(keyword_import_node_list)
-    extra_node = ExtraNode(keyword_multi_node_ops, args.get_all_code)
+    extra_node = ExtraNode(
+        keyword_multi_node_ops,
+        is_get_all_code,
+        keywords,
+    )
     extra_files_func_class_node_list = extra_node.get_func_class_node_list()
     extra_files_import_node_list = extra_node.get_import_node_list()
 
@@ -224,8 +259,14 @@ def merge():
     args = get_args()
     input_file = args.input
     output_file = args.output
+    keywords = args.modules
+    is_get_all_code = args.get_all_code
 
-    merge_node = gen_merge_node(input_file, args)
+    merge_node = gen_merge_node(
+        input_file,
+        keywords,
+        is_get_all_code,
+    )
 
     # write code to file
     with open(output_file, "w", encoding="utf-8") as f:
