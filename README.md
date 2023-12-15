@@ -39,10 +39,20 @@ simple example:
 mf -i main.py -m demo
 ```
 
+this will import need functions and classes
+
+
+```
+mf -i main.py -m demo -a
+```
+
 - -i: input file
 - -m: modules or keywords in modules
+- -a: get all code from source file
 
 **then, demo's functions will merge into `one.py`**
+
+PS: the code you need merge from extra module must in from ... import ... statements
 
 `main.py` below
 
