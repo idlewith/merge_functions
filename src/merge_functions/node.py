@@ -25,6 +25,15 @@ class NodeOps:
     def is_import(self):
         return isinstance(self.node, ast.Import)
 
+    def is_func(self):
+        return isinstance(self.node, ast.FunctionDef)
+
+    def is_class(self):
+        return isinstance(self.node, ast.ClassDef)
+
+    def is_func_or_class(self):
+        return self.is_func() or self.is_class()
+
     def is_import_or_import_from(self):
         return self.is_import() or self.is_import_from()
 
