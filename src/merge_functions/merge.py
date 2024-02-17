@@ -1,6 +1,7 @@
 import argparse
 import ast
 import inspect
+import os
 
 import isort
 from black import format_str, FileMode
@@ -121,8 +122,56 @@ class ExtraNode:
         node_ops = NodeOps(node)
         return node_ops.is_func_or_class()
 
+    @staticmethod
+    def get_package_path(package_name):
+        init_package_path = os.path.abspath(__import__(package_name).__file__)
+        package_path = os.path.dirname(init_package_path)
+        return package_path
+
+    @staticmethod
+    def get_filtered_nodes_from_files(source_files, condition_func):
+        filtered_nodes = []
+        for source_file in source_files:
+            single_file_extra_nodes = parse_tree_body_from_file(source_file)
+            single_file_filtered_nodes = filter(
+                condition_func,
+                single_file_extra_nodes,
+            )
+            filtered_nodes.extend(single_file_filtered_nodes)
+
+        return filtered_nodes
+
+    def get_single_package_modules_paths(self, package_name):
+        package_path = self.get_package_path(package_name)
+
+        source_files = set()
+        for root, dirs, files in os.walk(package_path):
+            for file in files:
+                if not file.endswith(".py"):
+                    continue
+
+                module_path = os.path.join(root, file)
+                source_files.add(module_path)
+
+        return source_files
+
+    def get_filtered_nodes_from_all_modules(self, condition_func):
+        nodes = []
+        third_packages = self.keywords
+        for third_package in third_packages:
+            source_files = self.get_single_package_modules_paths(third_package)
+            filtered_nodes = self.get_filtered_nodes_from_files(
+                source_files,
+                condition_func,
+            )
+            nodes.extend(filtered_nodes)
+
+        return nodes
+
     def get_all_func_class_node_list(self):
-        return self.get_filtered_node_list(self.is_func_or_class_condition)
+        return self.get_filtered_nodes_from_all_modules(
+            self.is_func_or_class_condition
+        )
 
     def get_func_class_node_list_by_keyword(self):
         node_list = self.multi_node_ops.node_list
@@ -147,32 +196,13 @@ class ExtraNode:
         else:
             return self.get_func_class_node_list_by_keyword()
 
-    def get_filtered_node_list(self, condition_func):
-        node_list = self.multi_node_ops.node_list
-        filtered_node_list = []
-        for node in node_list:
-            node_ops = NodeOps(node)
-
-            source_file_set = set()
-            for name in node.names:
-                func_class = node_ops.get_func_class(name)
-                source_file = inspect.getsourcefile(func_class)
-                source_file_set.add(source_file)
-
-            for source_file in source_file_set:
-                extra_node_list = parse_tree_body_from_file(source_file)
-                filtered_nodes = filter(condition_func, extra_node_list)
-                filtered_node_list.extend(filtered_nodes)
-
-        return filtered_node_list
-
     def get_import_node_list(self):
-        import_node_list = self.get_filtered_node_list(
+        import_nodes = self.get_filtered_nodes_from_all_modules(
             self.is_import_condition
         )
 
         node_list = []
-        for node in import_node_list:
+        for node in import_nodes:
             node_ops = NodeOps(node)
 
             if node_ops.is_import():
