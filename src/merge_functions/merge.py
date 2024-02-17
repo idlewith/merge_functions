@@ -124,18 +124,18 @@ class ExtraNode:
 
     @staticmethod
     def get_package_path(package_name):
-        init_package_path = os.path.abspath(__import__(package_name).__file__)
-        package_path = os.path.dirname(init_package_path)
+        init_path = os.path.abspath(__import__(package_name).__file__)
+        package_path = os.path.dirname(init_path)
         return package_path
 
     @staticmethod
     def get_filtered_nodes_from_files(source_files, condition_func):
         filtered_nodes = []
         for source_file in source_files:
-            single_file_extra_nodes = parse_tree_body_from_file(source_file)
+            single_file_nodes = parse_tree_body_from_file(source_file)
             single_file_filtered_nodes = filter(
                 condition_func,
-                single_file_extra_nodes,
+                single_file_nodes,
             )
             filtered_nodes.extend(single_file_filtered_nodes)
 
