@@ -20,7 +20,7 @@ exclude = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.8, <4"
+python = ">=3.9"
 black = "23.3.0"
 isort = "^5.12.0"
 
