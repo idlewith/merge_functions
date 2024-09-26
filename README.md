@@ -5,17 +5,11 @@ this is a dirty way to merge functions from other python files into one python f
 
 ## install merge_functions
 
-```
-pip install merge_functions
-```
-
-more infos:
 
 using python 3.9
 
-then install specific astunparse version
-
 ```
+pip install merge_functions
 pip install astunparse=1.6.3
 ```
 
@@ -111,6 +105,35 @@ def divide(a, b):
 
 ```
 
+## Pycharm settings
+
+
+External tools settings
+
+Program
+
+```
+$PyInterpreterDirectory$/mf.exe
+```
+
+Arguments
+
+```
+-i $FilePath$ -m utils -a
+```
+
+Working directory
+
+```
+$ProjectFileDir$
+```
+
+Advanced Options
+
+```
+Synchronize files after exection
+Open console for tool output
+```
 
 
 
