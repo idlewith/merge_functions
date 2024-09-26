@@ -9,6 +9,16 @@ this is a dirty way to merge functions from other python files into one python f
 pip install merge_functions
 ```
 
+more infos:
+
+using python 3.9
+
+then install specific astunparse version
+
+```
+pip install astunparse=1.6.3
+```
+
 ## how to use
 
 if you want to import from current directory python file, you need set environment:
