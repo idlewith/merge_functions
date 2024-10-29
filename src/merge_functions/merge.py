@@ -49,7 +49,7 @@ def get_args():
     parser.add_argument(
         "-f",
         "--only_first_module",
-        action="store_false",
+        action="store_true",
         help=(
             "once pass this argument, "
             "get all functions and classes which contains in first module"
