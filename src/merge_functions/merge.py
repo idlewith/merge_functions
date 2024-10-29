@@ -46,15 +46,31 @@ def get_args():
         ),
         required=False,
     )
+    parser.add_argument(
+        "-f",
+        "--only_first_module",
+        action="store_false",
+        help=(
+            "once pass this argument, "
+            "get all functions and classes which contains in first module"
+        ),
+        required=False,
+    )
 
     args = parser.parse_args()
     return args
 
 
 class MainNode:
-    def __init__(self, keywords, multi_node_ops: MultiNodeOps):
+    def __init__(
+        self,
+        keywords,
+        multi_node_ops: MultiNodeOps,
+        is_only_first_module,
+    ):
         self.keywords = keywords
         self.multi_node_ops = multi_node_ops
+        self.is_only_first_module = is_only_first_module
 
     def get_import_node_list(self):
         begin = 0
@@ -73,7 +89,10 @@ class MainNode:
                 rest_import_node_list.append(node)
                 continue
 
-            if node_ops.is_keywords_in_node_module(self.keywords):
+            is_keywords_in_module = node_ops.is_keywords_in_node_module(
+                self.keywords, self.is_only_first_module
+            )
+            if is_keywords_in_module:
                 continue
 
             rest_import_node_list.append(node)
@@ -88,7 +107,12 @@ class MainNode:
             if not node_ops.is_import_from():
                 continue
 
-            if not node_ops.is_keywords_in_node_module(self.keywords):
+            is_not_keywords_in_module = (
+                not node_ops.is_keywords_in_node_module(
+                    self.keywords, self.is_only_first_module
+                )
+            )
+            if is_not_keywords_in_module:
                 continue
 
             keyword_node_list.append(node)
@@ -107,10 +131,12 @@ class ExtraNode:
         multi_node_ops,
         is_get_all_code,
         keywords,
+        is_only_first_module,
     ):
         self.multi_node_ops = multi_node_ops
         self.is_get_all_code = is_get_all_code
         self.keywords = keywords
+        self.is_only_first_module = is_only_first_module
 
     @staticmethod
     def is_import_condition(node):
@@ -209,7 +235,10 @@ class ExtraNode:
                 node_list.append(node)
                 continue
 
-            if node_ops.is_keywords_in_node_module(self.keywords):
+            is_keywords_in_module = node_ops.is_keywords_in_node_module(
+                self.keywords, self.is_only_first_module
+            )
+            if is_keywords_in_module:
                 continue
 
             node_list.append(node)
@@ -240,6 +269,7 @@ def gen_merge_node(
     input_file,
     keywords,
     is_get_all_code,
+    is_only_first_module,
 ):
     check_file_type(input_file)
     node_list = parse_tree_body_from_file(input_file)
@@ -248,7 +278,11 @@ def gen_merge_node(
     full_multi_node_ops.check_file_content()
     is_docstr_node_exist = full_multi_node_ops.has_docstring_node()
 
-    main_node = MainNode(keywords, full_multi_node_ops)
+    main_node = MainNode(
+        keywords,
+        full_multi_node_ops,
+        is_only_first_module,
+    )
     rest_import_node_list = main_node.get_rest_import_node_list()
     keyword_import_node_list = main_node.get_keyword_import_node_list()
     rest_node_list = main_node.get_rest_node_list()
@@ -258,6 +292,7 @@ def gen_merge_node(
         keyword_multi_node_ops,
         is_get_all_code,
         keywords,
+        is_only_first_module,
     )
     extra_files_func_class_node_list = extra_node.get_func_class_node_list()
     extra_files_import_node_list = extra_node.get_import_node_list()
@@ -291,11 +326,13 @@ def merge():
     output_file = args.output
     keywords = args.modules
     is_get_all_code = args.get_all_code
+    is_only_first_module = args.only_first_module
 
     merge_node = gen_merge_node(
         input_file,
         keywords,
         is_get_all_code,
+        is_only_first_module,
     )
 
     # write code to file

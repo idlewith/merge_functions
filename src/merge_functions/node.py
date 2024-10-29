@@ -37,9 +37,16 @@ class NodeOps:
     def is_import_or_import_from(self):
         return self.is_import() or self.is_import_from()
 
-    def is_keywords_in_node_module(self, keywords):
+    def is_keywords_in_node_module(self, keywords, is_only_first_module):
         for keyword in keywords:
-            exist = keyword.lower() in self.node.module.lower()
+            if is_only_first_module:
+                exist = (
+                    f"{keyword.lower()}." in self.node.module.lower()
+                    and f".{keyword.lower()}." not in self.node.module.lower()
+                )
+            else:
+                exist = keyword.lower() in self.node.module.lower()
+
             if exist:
                 return exist
         return False
